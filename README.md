@@ -1,20 +1,43 @@
-# IDLIX for Android TV 🎬📺
+# IDLIX: Android TV & Android Mobile 🎬📺📱
 
 <p align="center">
-  <img width="460" height="300" src="https://cdn.abdilah.id/uploads/com.idlix.tv-preview.jpeg">
+  <img src="https://cdn.abdilah.id/uploads/com.idlix.tv_and_com.idlix.mobile-preview.png">
 </p>
 
-A modern, high-performance, **100% native Android TV** application for streaming movies and TV series from IDLIX with an intuitive Netflix-style Leanback user interface.
+A modern, high-performance, **100% native Android streaming platform** for movies and TV series from IDLIX with multi-platform support (Android TV & Android Mobile) built using a unified **Multi-Module Architecture**.
 
-The project is split into two complementary modules:
-1. **Android TV Client (`app/`)**: Built entirely in Kotlin, Jetpack Compose for TV (`androidx.tv.material3`), and AndroidX Media3 (ExoPlayer). It contains **zero WebView/Chromium overhead**, keeping the APK lightweight (~9 MB) and highly responsive on entry-level Android TV hardware.
-2. **Backend API Scraper & Proxy (`Backend API/`)**: A Fastify TypeScript service running a headless stealth browser to seamlessly bypass Cloudflare challenges, scrape metadata, and resolve HLS master playlists into ready-to-stream endpoints.
+Project ini terbagi menjadi modul-modul independen yang saling melengkapi:
+1. **Shared Core Data (`core/data/`)**: Modul library Kotlin murni tanpa dependensi UI yang mengelola Retrofit client, model data, deserializer toleran, repository, dan penyimpanan riwayat tontonan lokal (`WatchHistoryStore`).
+2. **Android TV Client (`app-tv/`)**: Aplikasi khusus Android TV/Google TV berbasis Jetpack Compose for TV (`androidx.tv.material3`) dan Media3 ExoPlayer dengan antarmuka Leanback (remote D-Pad, 10-foot UI, fixed landscape).
+3. **Android Mobile Client (`app-mobile/`)**: Aplikasi khusus smartphone & tablet berbasis Jetpack Compose **Material 3** modern (Bottom Navigation Bar, Swipeable Banner Pager, Inline-to-Fullscreen Player, Touch Gestures, dan **Picture-in-Picture**).
+4. **Backend API Scraper & Proxy (`Backend API/`)**: Service Fastify TypeScript dengan headless stealth browser untuk bypass Cloudflare Turnstile, scraping katalog, dan resolusi one-shot token HLS stream.
 
 ---
 
 ## 🌟 Fitur Utama (Key Features)
 
-### 📺 Android TV Client
+### 📱 Android Mobile Client (`app-mobile`)
+* **Material 3 & Edge-to-Edge Display**:
+  * Tampilan immersive modern dengan handling `WindowInsets` bebas dari benturan notch / kamera punch-hole.
+  * Navigasi intuitif **Bottom Navigation Bar** 5 tab: *Home*, *Movies*, *Series*, *Search*, dan *Library*.
+* **Hero Carousel & Infinite Scrolling**:
+  * Pager banner horizontal otomatis (`HorizontalPager`) dengan indikator titik dinamis dan tombol aksi cepat.
+  * Barisan *Lanjutkan Menonton* (Continue Watching) dengan thumbnail 16:9 dan progress bar tontonan.
+  * Grid vertikal 3 kolom (smartphone) dan 5 kolom (tablet) dengan infinite scroll pagination dan filter chips genre/sorting.
+* **Dual-Mode Player (Inline ke Fullscreen)**:
+  * **Mode Inline (Portrait 16:9)**: Video langsung berputar di atas layar sambil pengguna tetap dapat membaca sinopsis dan memilih episode serial di bawahnya.
+  * **Mode Fullscreen (Landscape)**: Transisi mulus ke layar penuh immersive melalui tombol expand atau sensor rotasi.
+  * **BackHandler Cerdas**: Menekan tombol Back saat fullscreen akan mengecilkan player kembali ke mode inline (tidak langsung keluar layar).
+* **Touch Gestures & Media Controls**:
+  * **Double-Tap**: Sisi kiri mundur 10 detik, sisi kanan maju 10 detik disertai animasi ripple.
+  * **Vertical Drag**: Sisi kiri untuk Brightness (kecerahan), sisi kanan untuk Volume suara.
+  * **Timeline Scrubber**: Scrub horizontal presisi untuk loncat ke menit tertentu.
+* **Picture-in-Picture (PiP)**:
+  * Otomatis masuk ke mode floating PiP saat pengguna menekan Home atau beralih ke aplikasi lain (`onUserLeaveHint`).
+* **Integrasi Subtitle SubDL**:
+  * Pemilihan trek subtitle bawaan atau pencarian subtitle Bahasa Indonesia/Inggris via SubDL API.
+
+### 📺 Android TV Client (`app-tv`)
 * **100% Native Architecture**: Bebas Chromium dan WebView di dalam APK. Menggunakan hardware decoder bawaan TV (`MediaCodec`) via AndroidX Media3 ExoPlayer.
 * **Netflix-Style Leanback UI**:
   * Floating navigation sidebar dengan smooth overlay (tanpa re-layout konten).
@@ -26,12 +49,10 @@ The project is split into two complementary modules:
   * Buffer kontrol TV adaptif untuk pemutaran instan tanpa stuttering.
 * **Manajemen Subtitle & Integrasi SubDL**:
   * Subtitle internal IDLIX otomatis (Indonesian & English).
-  * Integrasi third-party SubDL.com untuk pencarian dan pengunduhan subtitle alternatif langsung dari player.
+  * Integrasi third-party SubDL.com untuk pencarian dan pengunduhan subtitle alternatif langsung dari player remote TV.
 * **Menu Pengaturan Terintegrasi (In-App Settings)**:
   * Pengaturan alamat Backend API langsung dari layar TV menggunakan remote D-pad.
-  * Pengaturan custom API Key SubDL.
-  * Tombol Uji Koneksi *real-time* dengan indikator latensi/status HTTP.
-  * Penyimpanan otomatis di penyimpanan lokal TV tanpa perlu re-compile APK.
+  * Pengaturan custom API Key SubDL & tombol Uji Koneksi *real-time*.
 * **Bilingual Localization**:
   * Mendukung penuh Bahasa Indonesia (`id`/`in`) dan English (`en`). Otomatis mengikuti bahasa sistem TV.
 
@@ -43,23 +64,37 @@ The project is split into two complementary modules:
 
 ---
 
-## 📁 Struktur Direktori (Project Structure)
+## 📁 Struktur Direktori Multi-Module (Project Structure)
 
 ```
 Idlix for TV/
-├── app/                                 # Modul Aplikasi Android TV (Kotlin + Compose)
+├── core/
+│   └── data/                            # [Shared Library] Model, API Retrofit, Repository & DB
+│       ├── src/main/java/com/idlix/data/
+│       │   ├── api/                     # ApiClient (Universal), IdlixApiService, MajorplayApiService
+│       │   ├── local/                   # WatchHistoryStore (penyimpanan riwayat tontonan)
+│       │   ├── model/                   # MovieItem, SeriesItem, Subdl, Serializers
+│       │   └── repository/              # IdlixRepository & SubdlRepository
+│       └── build.gradle.kts
+│
+├── app-tv/                              # [Application] Modul Khusus Android TV / Google TV
 │   ├── src/main/java/com/idlix/tv/
-│   │   ├── data/
-│   │   │   ├── api/                     # Retrofit client & API definitions
-│   │   │   ├── local/                   # WatchHistoryStore (riwayat tontonan)
-│   │   │   ├── model/                   # Data class & JSON serializers
-│   │   │   └── repository/              # IdlixRepository & SubdlRepository
 │   │   ├── ui/
 │   │   │   ├── components/              # TvNavDrawer, TvMovieCard, TvHeroBillboard, dll.
-│   │   │   ├── navigation/              # Navigation Host & routes
+│   │   │   ├── navigation/              # TV NavHost & routes
 │   │   │   ├── screens/                 # Home, Movies, Series, Detail, Player, Settings
-│   │   │   └── theme/                   # Tema warna & style Leanback
-│   │   └── res/                         # Asset visual & string localization (en, id, in)
+│   │   │   └── theme/                   # Leanback Dark Theme
+│   │   └── res/                         # Asset TV banner & strings localization
+│   └── build.gradle.kts
+│
+├── app-mobile/                          # [Application] Modul Khusus Smartphone & Tablet
+│   ├── src/main/java/com/idlix/mobile/
+│   │   ├── ui/
+│   │   │   ├── components/              # MobileMovieCard, HeroBannerPager, FilterChips, ContinueWatching
+│   │   │   ├── navigation/              # Bottom Navigation Bar, NavHost, MainScaffold
+│   │   │   ├── screens/                 # Home, Movies, Series, Search, Library, Detail, Settings
+│   │   │   └── theme/                   # Material 3 Dark Theme & Edge-to-Edge styling
+│   │   └── res/                         # Asset mobile & strings
 │   └── build.gradle.kts
 │
 ├── Backend API/                         # Service Backend Scraper & Cache (Node.js/Docker)
@@ -71,123 +106,92 @@ Idlix for TV/
 │   ├── docker-compose.yml
 │   └── package.json
 │
-├── gradle/                              # Gradle wrapper & version catalogs
+├── gradle/                              # Gradle wrapper & version catalogs (libs.versions.toml)
 ├── build.gradle.kts
 ├── settings.gradle.kts
 ├── gradle.properties
 ├── local.properties                     # Konfigurasi lokal Android SDK & API URL (git-ignored)
-└── .gitignore                           # Proteksi credential & build junk
+└── PORTING_TO_MOBILE_PLAN.md            # Rencana arsitektur & roadmap implementasi teknis
 ```
 
 ---
 
-## 🛠️ Panduan Memulai (Getting Started)
+## 🛠️ Panduan Memulai & Kompilasi APK (Build Guide)
 
 ### 1. Menjalankan Backend API
 
-Backend API wajib berjalan agar aplikasi Android TV dapat mengambil katalog film dan streaming video.
+Backend API wajib berjalan agar aplikasi Android TV dan Mobile dapat mengambil katalog film dan streaming video.
 
-#### Opsi A: Menggunakan Docker / Podman (Direkomendasikan)
+#### Menggunakan Docker / Podman (Direkomendasikan)
 ```bash
 cd "Backend API"
-docker compose up -d --build # atau podman compose up -d --build
+docker compose up -d --build
 ```
 Cek apakah server sudah aktif:
 ```bash
 curl http://localhost:5376/health
 ```
 
-#### Opsi B: Menggunakan Node.js Lokal
+---
+
+### 2. Membangun APK Android TV (`app-tv`)
+
+#### Build APK Debug / Release:
 ```bash
-cd "Backend API"
-npm install
-npm run build
-npm start
+# Debug APK
+./gradlew :app-tv:assembleDebug
+# Output: app-tv/build/outputs/apk/debug/app-tv-debug.apk
+
+# Release APK
+./gradlew :app-tv:assembleRelease
+# Output: app-tv/build/outputs/apk/release/app-tv-release.apk
+```
+
+#### Install ke Android TV via ADB:
+```bash
+adb connect 192.168.x.tv:5555
+adb -s 192.168.x.tv:5555 install -r app-tv/build/outputs/apk/debug/app-tv-debug.apk
 ```
 
 ---
 
-### 2. Mengatur URL Backend di Android TV
+### 3. Membangun APK Android Mobile (`app-mobile`)
 
-Ada dua cara mudah:
+#### Build APK Debug / Release:
+```bash
+# Debug APK
+./gradlew :app-mobile:assembleDebug
+# Output: app-mobile/build/outputs/apk/debug/app-mobile-debug.apk
 
-#### Cara 1: Mengatur di file `local.properties` (Sebelum Build APK)
-Buka file `local.properties` di root folder proyek:
-```properties
-sdk.dir=/path/to/android/sdk
-backendApiUrl=http://192.168.x.x:5376/
+# Release APK
+./gradlew :app-mobile:assembleRelease
+# Output: app-mobile/build/outputs/apk/release/app-mobile-release.apk
 ```
-*(Ganti `192.168.x.x` dengan IP lokal komputer/VPS yang menjalankan Backend API).*
 
-#### Cara 2: Langsung di Aplikasi TV (Setelah Install)
-Buka aplikasi di Android TV -> Pilih menu **Settings (Pengaturan)** di sidebar -> Masukkan IP server Anda -> Klik **Test Connection** -> Klik **Save & Apply**.
+#### Install ke Perangkat Smartphone / Tablet via ADB:
+```bash
+# Cek ID perangkat mobile
+adb devices
 
----
+# Install ke perangkat target (contoh: Wi-Fi TLS / USB device)
+adb -s "adb-DELFOVPBBQPFDIA6-W6Rq2R._adb-tls-connect._tcp" install -r app-mobile/build/outputs/apk/debug/app-mobile-debug.apk
 
-### 3. Cara Memasang (Install) APK ke Android TV
+# Jalankan aplikasi mobile
+adb -s "adb-DELFOVPBBQPFDIA6-W6Rq2R._adb-tls-connect._tcp" shell am start -n com.idlix.mobile.debug/com.idlix.mobile.MainActivity
+```
 
-Tersedia dua opsi pemasangan sesuai kenyamanan Anda:
-
----
-
-#### 🟢 Opsi 1: Untuk Pengguna Awam (Mudah & Tanpa Koding)
-
-> 📖 **Panduan Lengkap & Bergambar**: Lihat panduan komprehensif di [**PANDUAN_INSTALASI_TV.md**](file:///Users/abdi/Documents/Personal%20Workspace/Idlix%20for%20TV/PANDUAN_INSTALASI_TV.md).
-
-Bagi pengguna yang tidak terbiasa dengan terminal/coding, Anda cukup menyiapkan file `app-release.apk` (unduh dari tab *Releases* atau hasil build) dan ikuti salah satu metode berikut:
-
-1. **Aktifkan Izin Sumber Tak Dikenal di TV**:
-   * Masuk ke **Pengaturan TV (Settings)** > **Aplikasi (Apps)** > **Keamanan & Pembatasan (Security & Restrictions)** > Aktifkan izin **Instal Aplikasi Tidak Dikenal (Install unknown apps)** untuk aplikasi File Manager Anda. *(Pada Google TV, klik 7x pada "Android TV OS Build" di menu System > About untuk membuka menu Developer).*
-2. **Pilih Metode Pemasangan**:
-   * **Lewat HP (Aplikasi *Send Files to TV*)**: Pasang aplikasi *Send Files to TV* di HP dan TV dari Google Play Store. Kirim APK dari HP ke TV via Wi-Fi yang sama, lalu buka file dan pilih **Install**.
-   * **Lewat Flashdisk (USB Drive)**: Salin file APK ke Flashdisk dari komputer, colok ke TV, buka aplikasi File Manager (misal: *File Commander* atau *AnExplorer*), lalu klik file APK untuk memasangnya.
-3. **Hubungkan ke Server**:
-   * Buka aplikasi IDLIX di TV -> Buka menu **Pengaturan (Settings)** di sidebar -> Masukkan IP server Backend Anda -> Tekan **Uji Koneksi** -> Tekan **Simpan & Terapkan**.
+> **Catatan untuk Perangkat Xiaomi / MIUI / HyperOS**:
+> Pastikan opsi **Install via USB** telah diaktifkan di *Developer Options*, dan tekan **Install / Allow** saat jendela konfirmasi muncul di layar ponsel.
 
 ---
 
-#### 💻 Opsi 2: Untuk Pengembang / Developer (via ADB)
+## Download Release Apk
 
-Pastikan Android TV Anda sudah mengaktifkan **Developer Options** dan **ADB Debugging (Network)**:
-
-1. Hubungkan ADB ke TV melalui Wi-Fi/LAN:
-   ```bash
-   adb connect 192.168.x.tv:5555
-   ```
-
-2. Build APK Release:
-   ```bash
-   ./gradlew assembleRelease
-   ```
-   *File output APK:* `app/build/outputs/apk/release/app-release.apk` 
-
-3. Install APK ke TV:
-   ```bash
-   adb install -r app/build/outputs/apk/release/app-release.apk
-   ```
-
-4. Jalankan aplikasi di TV:
-   ```bash
-   adb shell monkey -p com.idlix.tv -c android.intent.category.LAUNCHER 1
-   ```
-
----
-
-## 📡 REST API Endpoints (Backend)
-
-| Method | Endpoint | Keterangan |
-| :--- | :--- | :--- |
-| `GET` | `/health` | Status server dan engine scraper |
-| `GET` | `/api/movies` | Daftar film (pagination, sort, filter genre) |
-| `GET` | `/api/series` | Daftar serial TV |
-| `GET` | `/api/movies/:slug` | Detail film lengkap beserta sinopsis & cast |
-| `GET` | `/api/series/:slug` | Detail serial beserta daftar episode tiap season |
-| `GET` | `/api/search?q=:keyword` | Pencarian film / serial |
-| `GET` | `/api/playback/resolve` | One-shot resolver playlist HLS & subtitle siap putar |
+Look at this [page](https://github.com/samdgea/idlix-androidtv/releases).
 
 ---
 
 ## 🔒 Keamanan & Lisensi
 
 * File sensitif seperti `local.properties`, sertifikat signing keystore (`*.jks`), dan credential environment dilindungi di [`.gitignore`](file:///Users/abdi/Documents/Personal%20Workspace/Idlix%20for%20TV/.gitignore).
-* Proyek ini dibuat untuk keperluan edukasi dan riset arsitektur aplikasi Android TV Native dan streaming HLS.
+* Proyek ini dibuat untuk keperluan edukasi dan riset arsitektur multi-module Android Native (TV & Mobile) serta streaming HLS.
