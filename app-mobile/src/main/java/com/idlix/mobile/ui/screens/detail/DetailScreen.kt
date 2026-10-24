@@ -35,6 +35,8 @@ import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
@@ -145,11 +147,27 @@ fun DetailScreen(
     val genres = (uiState.movie?.genres ?: uiState.series?.genres ?: emptyList()).map { it.name }
     val castList = uiState.movie?.cast ?: uiState.series?.cast ?: emptyList()
 
-    val currentSubtitle = if (uiState.series != null && uiState.selectedEpisode != null) {
-        val sNum = uiState.selectedSeason?.seasonNumber ?: 1
-        "S${sNum}E${uiState.selectedEpisode!!.episodeNumber}: ${uiState.selectedEpisode!!.name}"
+    val currentSubtitle = if (uiState.series != null) {
+        val playingEp = uiState.playingEpisode
+        val playingSNum = uiState.playingSeasonNumber
+        if (playingEp != null) {
+            "S${playingSNum ?: (uiState.selectedSeason?.seasonNumber ?: 1)}E${playingEp.episodeNumber}: ${playingEp.name}"
+        } else if (uiState.selectedEpisode != null) {
+            val sNum = uiState.selectedSeason?.seasonNumber ?: 1
+            "S${sNum}E${uiState.selectedEpisode!!.episodeNumber}: ${uiState.selectedEpisode!!.name}"
+        } else {
+            null
+        }
     } else {
         null
+    }
+
+    val previewImageUrl = if (uiState.series != null) {
+        uiState.selectedEpisode?.fullStillUrl?.takeIf { it.isNotBlank() }
+            ?: uiState.series?.fullBackdropUrl
+            ?: uiState.series?.fullPosterUrl
+    } else {
+        uiState.movie?.fullBackdropUrl ?: uiState.movie?.fullPosterUrl
     }
 
     Box(
@@ -157,68 +175,55 @@ fun DetailScreen(
             .fillMaxSize()
             .background(BackgroundDark)
     ) {
-        if (isFullscreen) {
-            // Fullscreen Player (Edge-to-Edge Landscape)
-            MobilePlayerView(
-                title = title,
-                subtitle = currentSubtitle,
-                resolvedStream = uiState.resolvedStream,
-                isStreamLoading = uiState.isStreamLoading,
-                countdownSeconds = uiState.countdownSeconds,
-                streamError = uiState.streamError,
-                selectedSubtitle = uiState.selectedSubtitle,
-                isSubtitleEnabled = uiState.isSubtitleEnabled,
-                initialPositionMs = uiState.initialPositionMs,
-                isFullscreen = true,
-                nextEpisode = uiState.nextEpisode,
-                isNextEpisodeDismissed = uiState.isNextEpisodeDismissed,
-                onToggleFullscreen = { isFullscreen = false },
-                onOpenSubtitlePicker = { viewModel.openSubtitlePicker() },
-                onBackClick = { isFullscreen = false },
-                onPlayNextEpisode = { viewModel.playNextEpisode() },
-                onDismissNextEpisode = { viewModel.dismissNextEpisode() },
-                onRetryPlayback = { viewModel.retryPlayback() },
-                onSaveProgress = { pos, dur -> viewModel.saveProgress(pos, dur) },
-                modifier = Modifier.fillMaxSize()
-            )
-        } else {
-            // Portrait Mode: Top 16:9 Inline Player + Bottom Scrollable Content
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .statusBarsPadding()
-            ) {
-                // Inline 16:9 Player Box
-                Box(
-                    modifier = Modifier
+        Column(
+            modifier = Modifier.fillMaxSize()
+        ) {
+            // Player Box (Inline 16:9 or Fullscreen Landscape)
+            Box(
+                modifier = if (isFullscreen) {
+                    Modifier.fillMaxSize()
+                } else {
+                    Modifier
                         .fillMaxWidth()
+                        .statusBarsPadding()
                         .aspectRatio(16f / 9f)
                         .background(Color.Black)
-                ) {
-                    MobilePlayerView(
-                        title = title,
-                        subtitle = currentSubtitle,
-                        resolvedStream = uiState.resolvedStream,
-                        isStreamLoading = uiState.isStreamLoading,
-                        countdownSeconds = uiState.countdownSeconds,
-                        streamError = uiState.streamError,
-                        selectedSubtitle = uiState.selectedSubtitle,
-                        isSubtitleEnabled = uiState.isSubtitleEnabled,
-                        initialPositionMs = uiState.initialPositionMs,
-                        isFullscreen = false,
-                        nextEpisode = uiState.nextEpisode,
-                        isNextEpisodeDismissed = uiState.isNextEpisodeDismissed,
-                        onToggleFullscreen = { isFullscreen = true },
-                        onOpenSubtitlePicker = { viewModel.openSubtitlePicker() },
-                        onBackClick = onBackClick,
-                        onPlayNextEpisode = { viewModel.playNextEpisode() },
-                        onDismissNextEpisode = { viewModel.dismissNextEpisode() },
-                        onRetryPlayback = { viewModel.retryPlayback() },
-                        onSaveProgress = { pos, dur -> viewModel.saveProgress(pos, dur) },
-                        modifier = Modifier.fillMaxSize()
-                    )
                 }
+            ) {
+                MobilePlayerView(
+                    title = title,
+                    subtitle = currentSubtitle,
+                    resolvedStream = uiState.resolvedStream,
+                    isStreamLoading = uiState.isStreamLoading,
+                    countdownSeconds = uiState.countdownSeconds,
+                    streamError = uiState.streamError,
+                    selectedSubtitle = uiState.selectedSubtitle,
+                    isSubtitleEnabled = uiState.isSubtitleEnabled,
+                    initialPositionMs = uiState.initialPositionMs,
+                    isFullscreen = isFullscreen,
+                    previewImageUrl = previewImageUrl,
+                    onPlayClick = { viewModel.playCurrentMedia() },
+                    nextEpisode = uiState.nextEpisode,
+                    isNextEpisodeDismissed = uiState.isNextEpisodeDismissed,
+                    onToggleFullscreen = { isFullscreen = !isFullscreen },
+                    onOpenSubtitlePicker = { viewModel.openSubtitlePicker() },
+                    onBackClick = {
+                        if (isFullscreen) {
+                            isFullscreen = false
+                        } else {
+                            onBackClick()
+                        }
+                    },
+                    onPlayNextEpisode = { viewModel.playNextEpisode() },
+                    onDismissNextEpisode = { viewModel.dismissNextEpisode() },
+                    onRetryPlayback = { viewModel.retryPlayback() },
+                    onSaveProgress = { pos, dur -> viewModel.saveProgress(pos, dur) },
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
 
+            // Scrollable Content (hidden when in fullscreen)
+            if (!isFullscreen) {
                 if (uiState.isLoadingDetail) {
                     Box(
                         modifier = Modifier
@@ -315,6 +320,54 @@ fun DetailScreen(
                                         modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                     )
                                 }
+                            }
+                            Spacer(modifier = Modifier.height(14.dp))
+                        }
+
+                        // Primary Play / Watch Now CTA Button
+                        item {
+                            Button(
+                                onClick = { viewModel.playCurrentMedia() },
+                                colors = ButtonDefaults.buttonColors(containerColor = IdlixRed),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(48.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.PlayArrow,
+                                    contentDescription = null,
+                                    tint = Color.White,
+                                    modifier = Modifier.size(24.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                val buttonText = if (uiState.isStreamLoading) {
+                                    stringResource(R.string.connecting_to_media)
+                                } else if (uiState.series != null) {
+                                    val playingEp = uiState.playingEpisode
+                                    val selectedEp = uiState.selectedEpisode ?: uiState.episodes.firstOrNull()
+                                    if (uiState.resolvedStream != null && playingEp != null) {
+                                        "Sedang Diputar: S${uiState.playingSeasonNumber ?: (uiState.selectedSeason?.seasonNumber ?: 1)}E${playingEp.episodeNumber}"
+                                    } else if (selectedEp != null) {
+                                        "Putar S${uiState.selectedSeason?.seasonNumber ?: 1}E${selectedEp.episodeNumber}: ${selectedEp.name}"
+                                    } else {
+                                        stringResource(R.string.play_now)
+                                    }
+                                } else {
+                                    if (uiState.resolvedStream != null) {
+                                        "Sedang Diputar"
+                                    } else {
+                                        stringResource(R.string.play_now)
+                                    }
+                                }
+                                Text(
+                                    text = buttonText,
+                                    color = Color.White,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
                             }
                             Spacer(modifier = Modifier.height(14.dp))
                         }
@@ -502,7 +555,7 @@ fun DetailScreen(
 
                             // Episode Cards
                             items(uiState.episodes) { episode ->
-                                val isSelected = uiState.selectedEpisode?.id == episode.id
+                                val isSelected = (uiState.playingEpisode?.id ?: uiState.selectedEpisode?.id) == episode.id
                                 EpisodeCardItem(
                                     episode = episode,
                                     isSelected = isSelected,

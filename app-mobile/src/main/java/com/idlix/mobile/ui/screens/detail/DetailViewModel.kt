@@ -14,6 +14,7 @@ import com.idlix.data.model.SubdlSubtitle
 import com.idlix.data.model.SubtitleTrack
 import com.idlix.data.repository.IdlixRepository
 import com.idlix.data.repository.SubdlRepository
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -36,6 +37,10 @@ data class DetailUiState(
     val selectedSeason: Season? = null,
     val episodes: List<EpisodeItem> = emptyList(),
     val selectedEpisode: EpisodeItem? = null,
+
+    // Active playback info
+    val playingEpisode: EpisodeItem? = null,
+    val playingSeasonNumber: Int? = null,
 
     // Playback state
     val isStreamLoading: Boolean = false,
@@ -75,6 +80,9 @@ class DetailViewModel(
     private var currentSeasonNumber: Int? = null
     private var currentEpisodeNumber: Int? = null
 
+    private var playbackJob: Job? = null
+    private var resolveNextEpisodeJob: Job? = null
+
     fun loadDetail(contentType: String, slug: String) {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(
@@ -106,11 +114,6 @@ class DetailViewModel(
                             episodes = initialEpisodes,
                             selectedEpisode = firstEp
                         )
-
-                        // If we have an initial episode, start playback
-                        if (firstEp != null) {
-                            playEpisode(series, initialSeason.seasonNumber, firstEp)
-                        }
                     } else {
                         _uiState.value = _uiState.value.copy(
                             isLoadingDetail = false,
@@ -126,7 +129,6 @@ class DetailViewModel(
                             series = null,
                             episodes = emptyList()
                         )
-                        playMovie(movie)
                     } else {
                         _uiState.value = _uiState.value.copy(
                             isLoadingDetail = false,
@@ -152,9 +154,11 @@ class DetailViewModel(
         viewModelScope.launch {
             val defaultSeason = series.defaultSeason
             if (defaultSeason != null && defaultSeason.seasonNumber == season.seasonNumber && defaultSeason.episodes.isNotEmpty()) {
+                val cachedEpisodes = defaultSeason.episodes
                 _uiState.value = _uiState.value.copy(
                     selectedSeason = season,
-                    episodes = defaultSeason.episodes
+                    episodes = cachedEpisodes,
+                    selectedEpisode = cachedEpisodes.firstOrNull()
                 )
                 return@launch
             }
@@ -164,7 +168,10 @@ class DetailViewModel(
                 val epRes = repository.getEpisodeDetail(series.slug, season.seasonNumber, 1)
                 val newEpisodes = epRes?.season?.episodes ?: emptyList()
                 if (newEpisodes.isNotEmpty()) {
-                    _uiState.value = _uiState.value.copy(episodes = newEpisodes)
+                    _uiState.value = _uiState.value.copy(
+                        episodes = newEpisodes,
+                        selectedEpisode = newEpisodes.firstOrNull()
+                    )
                 }
             } catch (e: Exception) {
                 Log.w("DetailViewModel", "Failed to fetch episodes for season ${season.seasonNumber}: ${e.message}")
@@ -175,8 +182,41 @@ class DetailViewModel(
     fun selectEpisode(episode: EpisodeItem) {
         val series = _uiState.value.series ?: return
         val seasonNum = _uiState.value.selectedSeason?.seasonNumber ?: 1
-        _uiState.value = _uiState.value.copy(selectedEpisode = episode)
+
+        // If this exact episode is already playing and active without error, keep playing
+        if (_uiState.value.playingEpisode?.id == episode.id &&
+            (_uiState.value.resolvedStream != null || _uiState.value.isStreamLoading) &&
+            _uiState.value.streamError == null
+        ) {
+            return
+        }
+
+        _uiState.value = _uiState.value.copy(
+            selectedEpisode = episode,
+            playingEpisode = episode,
+            playingSeasonNumber = seasonNum
+        )
         playEpisode(series, seasonNum, episode)
+    }
+
+    fun playCurrentMedia() {
+        val state = _uiState.value
+        val movie = state.movie
+        val series = state.series
+        if (movie != null) {
+            playMovie(movie)
+        } else if (series != null) {
+            val seasonNum = state.selectedSeason?.seasonNumber ?: 1
+            val ep = state.selectedEpisode ?: state.episodes.firstOrNull()
+            if (ep != null) {
+                _uiState.value = _uiState.value.copy(
+                    selectedEpisode = ep,
+                    playingEpisode = ep,
+                    playingSeasonNumber = seasonNum
+                )
+                playEpisode(series, seasonNum, ep)
+            }
+        }
     }
 
     private fun playMovie(movie: MovieDetail) {
@@ -231,6 +271,10 @@ class DetailViewModel(
         seasonNumber: Int? = null,
         episodeNumber: Int? = null
     ) {
+        // Cancel in-flight playback and resolve jobs to prevent race conditions and double play
+        playbackJob?.cancel()
+        resolveNextEpisodeJob?.cancel()
+
         currentContentId = contentId
         currentContentType = contentType
         currentContentTitle = title
@@ -253,7 +297,7 @@ class DetailViewModel(
             episodeNumber = episodeNumber
         )
 
-        viewModelScope.launch {
+        playbackJob = viewModelScope.launch {
             _uiState.value = _uiState.value.copy(
                 isStreamLoading = true,
                 countdownSeconds = 0,
@@ -266,7 +310,7 @@ class DetailViewModel(
 
             // Asynchronously resolve next episode for Series
             if (contentType == "episode" && !slug.isNullOrBlank()) {
-                resolveNextEpisode(
+                resolveNextEpisodeJob = resolveNextEpisode(
                     seriesSlug = slug,
                     currentEpisodeId = contentId,
                     seasonNumber = seasonNumber,
@@ -313,8 +357,8 @@ class DetailViewModel(
         fallbackTitle: String,
         posterUrl: String?,
         backdropUrl: String?
-    ) {
-        viewModelScope.launch {
+    ): Job {
+        return viewModelScope.launch {
             try {
                 val series = repository.getSeriesDetail(seriesSlug) ?: return@launch
                 val defaultSeason = series.defaultSeason
@@ -437,7 +481,11 @@ class DetailViewModel(
     fun playNextEpisode() {
         val next = _uiState.value.nextEpisode ?: return
         val series = _uiState.value.series ?: return
-        _uiState.value = _uiState.value.copy(selectedEpisode = next.episode)
+        _uiState.value = _uiState.value.copy(
+            selectedEpisode = next.episode,
+            playingEpisode = next.episode,
+            playingSeasonNumber = next.seasonNumber
+        )
         playEpisode(series, next.seasonNumber, next.episode)
     }
 
@@ -518,5 +566,11 @@ class DetailViewModel(
         if (currentContentId.isNotBlank() && durationMs > 0) {
             historyStore.updateProgress(currentContentId, currentPosMs, durationMs)
         }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        playbackJob?.cancel()
+        resolveNextEpisodeJob?.cancel()
     }
 }
