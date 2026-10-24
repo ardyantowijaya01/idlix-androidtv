@@ -28,6 +28,7 @@ jobs:
       - name: Build app-tv release
         run: |
           chmod +x gradlew
+          sed -i '/org.gradle.java.home/d' gradle.properties
           ./gradlew :app-tv:assembleRelease --no-daemon --console=plain
       - name: Show outputs
         run: ls -lR app-tv/build/outputs/apk/
