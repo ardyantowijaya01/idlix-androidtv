@@ -3,7 +3,8 @@ import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 import { Browser, Page } from 'puppeteer';
 
 // Add stealth plugin to evade bot/Cloudflare detection
-puppeteer.use(StealthPlugin());
+const puppeteerInstance = (puppeteer as any).default || puppeteer;
+puppeteerInstance.use(StealthPlugin());
 
 export interface ResolvedPlaybackResult {
   title: string;
@@ -43,7 +44,7 @@ export class IdlixScraperEngine {
       try {
         const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH || undefined;
 
-        this.browser = await (puppeteer as any).launch({
+        this.browser = await (puppeteerInstance as any).launch({
           headless: true,
           executablePath,
           args: [
