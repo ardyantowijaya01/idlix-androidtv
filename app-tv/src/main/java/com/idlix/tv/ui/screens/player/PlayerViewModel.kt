@@ -155,33 +155,47 @@ class PlayerViewModel(
                 val series = repository.getSeriesDetail(seriesSlug) ?: return@launch
                 val defaultSeason = series.defaultSeason
                 val seriesTitle = series.title.ifBlank { fallbackTitle.substringBefore(" -") }
-                val allSeasons = series.seasons.ifEmpty {
+                val rawSeasons = series.seasons.ifEmpty {
                     if (defaultSeason != null) {
                         listOf(Season(seasonNumber = defaultSeason.seasonNumber, name = defaultSeason.name))
                     } else emptyList()
                 }
+                val allSeasons = rawSeasons.sortedBy { it.seasonNumber }
 
                 var currentSeasonNum = seasonNumber
-                val currentEpNum = episodeNumber
+                var currentEpNum = episodeNumber
                 var seasonEpisodes: List<EpisodeItem> = emptyList()
 
-                // If season number was passed or we can use defaultSeason
-                if (currentSeasonNum != null) {
-                    if (defaultSeason?.seasonNumber == currentSeasonNum && !defaultSeason.episodes.isNullOrEmpty()) {
-                        seasonEpisodes = defaultSeason.episodes
-                    } else {
-                        val epDetail = repository.getEpisodeDetail(seriesSlug, currentSeasonNum, currentEpNum ?: 1)
-                        seasonEpisodes = epDetail?.season?.episodes ?: emptyList()
+                // Strategy 1: Check if currentEpisodeId is in defaultSeason
+                if (defaultSeason?.episodes?.any { it.id == currentEpisodeId } == true) {
+                    currentSeasonNum = defaultSeason.seasonNumber
+                    seasonEpisodes = defaultSeason.episodes
+                } else if (currentSeasonNum != null && defaultSeason?.seasonNumber == currentSeasonNum && !defaultSeason.episodes.isNullOrEmpty()) {
+                    seasonEpisodes = defaultSeason.episodes
+                } else if (currentSeasonNum != null) {
+                    val epDetail = try {
+                        repository.getEpisodeDetail(seriesSlug, currentSeasonNum, 1)
+                    } catch (_: Exception) {
+                        null
                     }
-                } else {
-                    // Try defaultSeason first
-                    if (defaultSeason?.episodes?.any { it.id == currentEpisodeId } == true) {
-                        currentSeasonNum = defaultSeason.seasonNumber
-                        seasonEpisodes = defaultSeason.episodes
-                    } else {
-                        // Scan seasons to find which season contains this episode ID
-                        for (s in allSeasons) {
-                            val epDetail = repository.getEpisodeDetail(seriesSlug, s.seasonNumber, 1)
+                    seasonEpisodes = epDetail?.season?.episodes ?: emptyList()
+                }
+
+                // Strategy 2: If seasonEpisodes is still empty or currentEpisodeId not found, scan all seasons
+                if (seasonEpisodes.isEmpty() || (currentEpisodeId.isNotBlank() && seasonEpisodes.none { it.id == currentEpisodeId } && currentEpNum == null)) {
+                    for (s in allSeasons) {
+                        if (s.seasonNumber == defaultSeason?.seasonNumber && !defaultSeason.episodes.isNullOrEmpty()) {
+                            if (defaultSeason.episodes.any { it.id == currentEpisodeId }) {
+                                currentSeasonNum = s.seasonNumber
+                                seasonEpisodes = defaultSeason.episodes
+                                break
+                            }
+                        } else {
+                            val epDetail = try {
+                                repository.getEpisodeDetail(seriesSlug, s.seasonNumber, 1)
+                            } catch (_: Exception) {
+                                null
+                            }
                             val eps = epDetail?.season?.episodes ?: emptyList()
                             if (eps.any { it.id == currentEpisodeId }) {
                                 currentSeasonNum = s.seasonNumber
@@ -194,8 +208,14 @@ class PlayerViewModel(
 
                 if (seasonEpisodes.isEmpty()) return@launch
 
-                val currentIndex = seasonEpisodes.indexOfFirst {
-                    it.id == currentEpisodeId || (currentEpNum != null && it.episodeNumber == currentEpNum)
+                // Find index of current episode in this season
+                var currentIndex = seasonEpisodes.indexOfFirst { it.id == currentEpisodeId }
+                if (currentIndex == -1 && currentEpNum != null) {
+                    currentIndex = seasonEpisodes.indexOfFirst { it.episodeNumber == currentEpNum }
+                }
+
+                if (currentIndex != -1 && currentEpNum == null) {
+                    currentEpNum = seasonEpisodes[currentIndex].episodeNumber
                 }
 
                 if (currentIndex != -1 && currentIndex + 1 < seasonEpisodes.size) {
@@ -213,18 +233,16 @@ class PlayerViewModel(
                     )
                 } else if (currentSeasonNum != null) {
                     // Check if there is a next season
-                    val currentSeasonIndex = allSeasons.indexOfFirst { it.seasonNumber == currentSeasonNum }
-                    val nextSeason = if (currentSeasonIndex != -1 && currentSeasonIndex + 1 < allSeasons.size) {
-                        allSeasons[currentSeasonIndex + 1]
-                    } else {
-                        allSeasons.firstOrNull { it.seasonNumber == currentSeasonNum + 1 }
-                    }
-
+                    val nextSeason = allSeasons.firstOrNull { it.seasonNumber > currentSeasonNum }
                     if (nextSeason != null) {
                         // Load episode 1 of next season
-                        val nextSeasonDetail = repository.getEpisodeDetail(seriesSlug, nextSeason.seasonNumber, 1)
-                        val nextEp = nextSeasonDetail?.episode
-                            ?: nextSeasonDetail?.season?.episodes?.firstOrNull()
+                        val nextSeasonDetail = try {
+                            repository.getEpisodeDetail(seriesSlug, nextSeason.seasonNumber, 1)
+                        } catch (_: Exception) {
+                            null
+                        }
+                        val nextEp = nextSeasonDetail?.season?.episodes?.firstOrNull()
+                            ?: nextSeasonDetail?.episode
                         if (nextEp != null) {
                             _uiState.value = _uiState.value.copy(
                                 nextEpisode = NextEpisodeInfo(

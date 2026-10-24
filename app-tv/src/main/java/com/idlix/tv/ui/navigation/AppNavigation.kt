@@ -107,8 +107,8 @@ private fun androidx.navigation.NavGraphBuilder.setupNavRoutes(
             onNavigateToDetail = { type, slug ->
                 navController.navigate(Screen.Detail.createRoute(type, slug))
             },
-            onNavigateToPlayer = { type, id, title, poster, backdrop, slug ->
-                navController.navigate(Screen.Player.createRoute(type, id, title, poster, backdrop, slug))
+            onNavigateToPlayer = { type, id, title, poster, backdrop, slug, season, episode ->
+                navController.navigate(Screen.Player.createRoute(type, id, title, poster, backdrop, slug, season, episode))
             }
         )
     }

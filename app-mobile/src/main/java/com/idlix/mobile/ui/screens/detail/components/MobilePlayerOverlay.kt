@@ -98,7 +98,7 @@ fun MobilePlayerOverlay(
 
     val effectivePos = if (isScrubbing) scrubPositionMs.toLong() else currentPositionMs
     val remainingMs = if (durationMs > 0L) (durationMs - currentPositionMs).coerceAtLeast(0L) else Long.MAX_VALUE
-    val isNearEnd = durationMs > 120_000L && remainingMs in 1L..30_000L
+    val isNearEnd = durationMs > 60_000L && remainingMs in 0L..90_000L
     val showNextEpisodeCard = isNearEnd && nextEpisode != null && !isNextEpisodeDismissed
 
     Box(modifier = modifier.fillMaxSize()) {

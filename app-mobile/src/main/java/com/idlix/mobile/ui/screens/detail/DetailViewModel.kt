@@ -88,10 +88,13 @@ class DetailViewModel(
                     if (series != null) {
                         val allSeasons = series.seasons
                         val defaultSeason = series.defaultSeason
-                        val firstSeason = allSeasons.firstOrNull() ?: Season(
-                            seasonNumber = defaultSeason?.seasonNumber ?: 1,
-                            name = defaultSeason?.name ?: "Season 1"
-                        )
+                        val defaultSeasonNum = defaultSeason?.seasonNumber
+                        val initialSeason = allSeasons.firstOrNull { it.seasonNumber == defaultSeasonNum }
+                            ?: defaultSeason?.let { Season(id = it.id, seasonNumber = it.seasonNumber, name = it.name) }
+                            ?: allSeasons.firstOrNull() ?: Season(
+                                seasonNumber = defaultSeason?.seasonNumber ?: 1,
+                                name = defaultSeason?.name ?: "Season 1"
+                            )
                         val initialEpisodes = defaultSeason?.episodes ?: emptyList()
                         val firstEp = initialEpisodes.firstOrNull()
 
@@ -99,14 +102,14 @@ class DetailViewModel(
                             isLoadingDetail = false,
                             series = series,
                             movie = null,
-                            selectedSeason = firstSeason,
+                            selectedSeason = initialSeason,
                             episodes = initialEpisodes,
                             selectedEpisode = firstEp
                         )
 
                         // If we have an initial episode, start playback
                         if (firstEp != null) {
-                            playEpisode(series, firstSeason.seasonNumber, firstEp)
+                            playEpisode(series, initialSeason.seasonNumber, firstEp)
                         }
                     } else {
                         _uiState.value = _uiState.value.copy(
@@ -143,7 +146,19 @@ class DetailViewModel(
 
     fun selectSeason(season: Season) {
         val series = _uiState.value.series ?: return
+        if (_uiState.value.selectedSeason?.seasonNumber == season.seasonNumber && _uiState.value.episodes.isNotEmpty()) {
+            return
+        }
         viewModelScope.launch {
+            val defaultSeason = series.defaultSeason
+            if (defaultSeason != null && defaultSeason.seasonNumber == season.seasonNumber && defaultSeason.episodes.isNotEmpty()) {
+                _uiState.value = _uiState.value.copy(
+                    selectedSeason = season,
+                    episodes = defaultSeason.episodes
+                )
+                return@launch
+            }
+
             _uiState.value = _uiState.value.copy(selectedSeason = season)
             try {
                 val epRes = repository.getEpisodeDetail(series.slug, season.seasonNumber, 1)
@@ -304,30 +319,47 @@ class DetailViewModel(
                 val series = repository.getSeriesDetail(seriesSlug) ?: return@launch
                 val defaultSeason = series.defaultSeason
                 val seriesTitle = series.title.ifBlank { fallbackTitle.substringBefore(" -") }
-                val allSeasons = series.seasons.ifEmpty {
+                val rawSeasons = series.seasons.ifEmpty {
                     if (defaultSeason != null) {
                         listOf(Season(seasonNumber = defaultSeason.seasonNumber, name = defaultSeason.name))
                     } else emptyList()
                 }
+                val allSeasons = rawSeasons.sortedBy { it.seasonNumber }
 
                 var currentSeasonNum = seasonNumber
-                val currentEpNum = episodeNumber
+                var currentEpNum = episodeNumber
                 var seasonEpisodes: List<EpisodeItem> = emptyList()
 
-                if (currentSeasonNum != null) {
-                    if (defaultSeason?.seasonNumber == currentSeasonNum && !defaultSeason.episodes.isNullOrEmpty()) {
-                        seasonEpisodes = defaultSeason.episodes
-                    } else {
-                        val epDetail = repository.getEpisodeDetail(seriesSlug, currentSeasonNum, currentEpNum ?: 1)
-                        seasonEpisodes = epDetail?.season?.episodes ?: emptyList()
+                // Strategy 1: Check if currentEpisodeId is in defaultSeason
+                if (defaultSeason?.episodes?.any { it.id == currentEpisodeId } == true) {
+                    currentSeasonNum = defaultSeason.seasonNumber
+                    seasonEpisodes = defaultSeason.episodes
+                } else if (currentSeasonNum != null && defaultSeason?.seasonNumber == currentSeasonNum && !defaultSeason.episodes.isNullOrEmpty()) {
+                    seasonEpisodes = defaultSeason.episodes
+                } else if (currentSeasonNum != null) {
+                    val epDetail = try {
+                        repository.getEpisodeDetail(seriesSlug, currentSeasonNum, 1)
+                    } catch (_: Exception) {
+                        null
                     }
-                } else {
-                    if (defaultSeason?.episodes?.any { it.id == currentEpisodeId } == true) {
-                        currentSeasonNum = defaultSeason.seasonNumber
-                        seasonEpisodes = defaultSeason.episodes
-                    } else {
-                        for (s in allSeasons) {
-                            val epDetail = repository.getEpisodeDetail(seriesSlug, s.seasonNumber, 1)
+                    seasonEpisodes = epDetail?.season?.episodes ?: emptyList()
+                }
+
+                // Strategy 2: If seasonEpisodes is still empty or currentEpisodeId not found, scan all seasons
+                if (seasonEpisodes.isEmpty() || (currentEpisodeId.isNotBlank() && seasonEpisodes.none { it.id == currentEpisodeId } && currentEpNum == null)) {
+                    for (s in allSeasons) {
+                        if (s.seasonNumber == defaultSeason?.seasonNumber && !defaultSeason.episodes.isNullOrEmpty()) {
+                            if (defaultSeason.episodes.any { it.id == currentEpisodeId }) {
+                                currentSeasonNum = s.seasonNumber
+                                seasonEpisodes = defaultSeason.episodes
+                                break
+                            }
+                        } else {
+                            val epDetail = try {
+                                repository.getEpisodeDetail(seriesSlug, s.seasonNumber, 1)
+                            } catch (_: Exception) {
+                                null
+                            }
                             val eps = epDetail?.season?.episodes ?: emptyList()
                             if (eps.any { it.id == currentEpisodeId }) {
                                 currentSeasonNum = s.seasonNumber
@@ -340,11 +372,18 @@ class DetailViewModel(
 
                 if (seasonEpisodes.isEmpty()) return@launch
 
-                val currentIndex = seasonEpisodes.indexOfFirst {
-                    it.id == currentEpisodeId || (currentEpNum != null && it.episodeNumber == currentEpNum)
+                // Find index of current episode in this season
+                var currentIndex = seasonEpisodes.indexOfFirst { it.id == currentEpisodeId }
+                if (currentIndex == -1 && currentEpNum != null) {
+                    currentIndex = seasonEpisodes.indexOfFirst { it.episodeNumber == currentEpNum }
+                }
+
+                if (currentIndex != -1 && currentEpNum == null) {
+                    currentEpNum = seasonEpisodes[currentIndex].episodeNumber
                 }
 
                 if (currentIndex != -1 && currentIndex + 1 < seasonEpisodes.size) {
+                    // Next episode is in the same season!
                     val nextEp = seasonEpisodes[currentIndex + 1]
                     _uiState.value = _uiState.value.copy(
                         nextEpisode = NextEpisodeInfo(
@@ -357,17 +396,16 @@ class DetailViewModel(
                         )
                     )
                 } else if (currentSeasonNum != null) {
-                    val currentSeasonIndex = allSeasons.indexOfFirst { it.seasonNumber == currentSeasonNum }
-                    val nextSeason = if (currentSeasonIndex != -1 && currentSeasonIndex + 1 < allSeasons.size) {
-                        allSeasons[currentSeasonIndex + 1]
-                    } else {
-                        allSeasons.firstOrNull { it.seasonNumber == currentSeasonNum + 1 }
-                    }
-
+                    // Check if there is a next season
+                    val nextSeason = allSeasons.firstOrNull { it.seasonNumber > currentSeasonNum }
                     if (nextSeason != null) {
-                        val nextSeasonDetail = repository.getEpisodeDetail(seriesSlug, nextSeason.seasonNumber, 1)
-                        val nextEp = nextSeasonDetail?.episode
-                            ?: nextSeasonDetail?.season?.episodes?.firstOrNull()
+                        val nextSeasonDetail = try {
+                            repository.getEpisodeDetail(seriesSlug, nextSeason.seasonNumber, 1)
+                        } catch (_: Exception) {
+                            null
+                        }
+                        val nextEp = nextSeasonDetail?.season?.episodes?.firstOrNull()
+                            ?: nextSeasonDetail?.episode
                         if (nextEp != null) {
                             _uiState.value = _uiState.value.copy(
                                 nextEpisode = NextEpisodeInfo(

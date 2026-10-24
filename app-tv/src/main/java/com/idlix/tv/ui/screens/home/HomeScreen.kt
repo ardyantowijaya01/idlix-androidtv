@@ -30,7 +30,7 @@ import com.idlix.tv.ui.theme.NetflixWhite
 @Composable
 fun HomeScreen(
     onNavigateToDetail: (contentType: String, slug: String) -> Unit,
-    onNavigateToPlayer: (contentType: String, contentId: String, title: String, poster: String?, backdrop: String?, slug: String?) -> Unit,
+    onNavigateToPlayer: (contentType: String, contentId: String, title: String, poster: String?, backdrop: String?, slug: String?, season: Int?, episode: Int?) -> Unit,
     modifier: Modifier = Modifier,
     viewModel: HomeViewModel = viewModel()
 ) {
@@ -88,7 +88,9 @@ fun HomeScreen(
                                         it.title,
                                         it.fullPosterUrl,
                                         it.fullBackdropUrl,
-                                        it.slug
+                                        it.slug,
+                                        null,
+                                        null
                                     )
                                 }
                             }
@@ -114,7 +116,9 @@ fun HomeScreen(
                                     item.title,
                                     item.posterUrl,
                                     item.backdropUrl,
-                                    item.slug
+                                    item.slug,
+                                    item.seasonNumber,
+                                    item.episodeNumber
                                 )
                             }
                         )

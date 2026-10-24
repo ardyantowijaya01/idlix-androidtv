@@ -146,7 +146,7 @@ fun PlayerScreen(
     var userInteractionCount by remember { mutableIntStateOf(0) }
 
     val remainingMs = if (duration > 0L) (duration - currentPos).coerceAtLeast(0L) else Long.MAX_VALUE
-    val isNearEnd = duration > 120_000L && remainingMs in 1L..90_000L
+    val isNearEnd = duration > 60_000L && remainingMs in 0L..90_000L
     val isNextPromptVisible = isNearEnd && uiState.nextEpisode != null && !uiState.isNextEpisodeDismissed
 
     val rootFocusRequester = remember { FocusRequester() }
@@ -171,10 +171,10 @@ fun PlayerScreen(
         rootFocusRequester.requestFocus()
     }
 
-    // Auto-hide controls after 6 seconds of inactivity, paused during modal or scrubbing
-    LaunchedEffect(showControls, uiState.isSubtitlePickerVisible, isScrubbing, userInteractionCount) {
-        if (uiState.isSubtitlePickerVisible || isScrubbing) {
-            // Keep controls open while user is selecting subtitles or scrubbing the seekbar
+    // Auto-hide controls after 6 seconds of inactivity, paused during modal, scrubbing, or next episode prompt
+    LaunchedEffect(showControls, uiState.isSubtitlePickerVisible, isScrubbing, userInteractionCount, isNextPromptVisible) {
+        if (uiState.isSubtitlePickerVisible || isScrubbing || isNextPromptVisible) {
+            // Keep controls open or don't steal focus from prompt / modals
             return@LaunchedEffect
         }
         if (showControls) {
@@ -182,7 +182,9 @@ fun PlayerScreen(
             showControls = false
         } else {
             try {
-                rootFocusRequester.requestFocus()
+                if (!isNextPromptVisible && !uiState.isSubtitlePickerVisible) {
+                    rootFocusRequester.requestFocus()
+                }
             } catch (e: Exception) {}
         }
     }
@@ -227,7 +229,9 @@ fun PlayerScreen(
                         KeyEvent.KEYCODE_DPAD_CENTER,
                         KeyEvent.KEYCODE_ENTER,
                         KeyEvent.KEYCODE_NUMPAD_ENTER -> {
-                            if (!showControls) {
+                            if (isNextPromptVisible) {
+                                false
+                            } else if (!showControls) {
                                 showControls = true
                                 true
                             } else false
@@ -242,7 +246,9 @@ fun PlayerScreen(
                             true
                         }
                         KeyEvent.KEYCODE_DPAD_LEFT -> {
-                            if (!showControls) {
+                            if (isNextPromptVisible) {
+                                false
+                            } else if (!showControls) {
                                 activePlayer?.let { p ->
                                     p.seekTo((p.currentPosition - 10000L).coerceAtLeast(0L))
                                 }
@@ -251,7 +257,9 @@ fun PlayerScreen(
                             } else false
                         }
                         KeyEvent.KEYCODE_DPAD_RIGHT -> {
-                            if (!showControls) {
+                            if (isNextPromptVisible) {
+                                false
+                            } else if (!showControls) {
                                 activePlayer?.let { p ->
                                     p.seekTo((p.currentPosition + 10000L).coerceAtMost(p.duration))
                                 }
@@ -261,7 +269,9 @@ fun PlayerScreen(
                         }
                         KeyEvent.KEYCODE_DPAD_UP,
                         KeyEvent.KEYCODE_DPAD_DOWN -> {
-                            if (!showControls) {
+                            if (isNextPromptVisible) {
+                                false
+                            } else if (!showControls) {
                                 showControls = true
                                 true
                             } else false

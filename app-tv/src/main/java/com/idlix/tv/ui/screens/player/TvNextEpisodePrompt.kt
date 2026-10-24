@@ -1,5 +1,6 @@
 package com.idlix.tv.ui.screens.player
 
+import android.view.KeyEvent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -8,6 +9,7 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -25,12 +27,18 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -60,13 +68,19 @@ fun TvNextEpisodePrompt(
     modifier: Modifier = Modifier
 ) {
     val playNextFocusRequester = remember { FocusRequester() }
+    val dismissFocusRequester = remember { FocusRequester() }
+    var isDismissFocused by remember { mutableStateOf(false) }
 
     LaunchedEffect(isVisible) {
         if (isVisible) {
-            delay(150)
-            try {
-                playNextFocusRequester.requestFocus()
-            } catch (_: Exception) {}
+            isDismissFocused = false
+            // Multi-attempt focus request to ensure element is attached and composed
+            repeat(5) { attempt ->
+                delay(if (attempt == 0) 50L else 120L)
+                try {
+                    playNextFocusRequester.requestFocus()
+                } catch (_: Exception) {}
+            }
         }
     }
 
@@ -140,7 +154,30 @@ fun TvNextEpisodePrompt(
 
                 // Action Buttons: Play Next & Dismiss
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .focusGroup()
+                        .onPreviewKeyEvent { event ->
+                            if (event.nativeKeyEvent.action == KeyEvent.ACTION_DOWN) {
+                                when (event.nativeKeyEvent.keyCode) {
+                                    KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                                        if (!isDismissFocused) {
+                                            dismissFocusRequester.requestFocus()
+                                            true
+                                        } else false
+                                    }
+                                    KeyEvent.KEYCODE_DPAD_LEFT -> {
+                                        if (isDismissFocused) {
+                                            playNextFocusRequester.requestFocus()
+                                            true
+                                        } else false
+                                    }
+                                    KeyEvent.KEYCODE_DPAD_UP,
+                                    KeyEvent.KEYCODE_DPAD_DOWN -> true
+                                    else -> false
+                                }
+                            } else false
+                        },
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -161,6 +198,10 @@ fun TvNextEpisodePrompt(
                         modifier = Modifier
                             .weight(1f)
                             .focusRequester(playNextFocusRequester)
+                            .onFocusChanged { if (it.isFocused) isDismissFocused = false }
+                            .focusProperties {
+                                right = dismissFocusRequester
+                            }
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
@@ -193,7 +234,13 @@ fun TvNextEpisodePrompt(
                         border = ButtonDefaults.border(
                             focusedBorder = Border(BorderStroke(2.dp, NetflixWhite))
                         ),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                        modifier = Modifier
+                            .focusRequester(dismissFocusRequester)
+                            .onFocusChanged { if (it.isFocused) isDismissFocused = true }
+                            .focusProperties {
+                                left = playNextFocusRequester
+                            }
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,

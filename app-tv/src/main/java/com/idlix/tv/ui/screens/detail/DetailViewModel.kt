@@ -18,6 +18,7 @@ data class DetailUiState(
     val series: SeriesDetail? = null,
     val selectedSeason: Season? = null,
     val episodes: List<EpisodeItem> = emptyList(),
+    val isLoadingEpisodes: Boolean = false,
     val error: String? = null
 )
 
@@ -34,13 +35,18 @@ class DetailViewModel(
             try {
                 if (contentType == "tv_series") {
                     val series = repository.getSeriesDetail(slug)
-                    val firstSeason = series?.seasons?.firstOrNull()
-                    val episodes = series?.defaultSeason?.episodes ?: emptyList()
+                    val defaultSeason = series?.defaultSeason
+                    val defaultSeasonNum = defaultSeason?.seasonNumber
+                    // Match selected season with defaultSeason, or fallback to first season
+                    val initialSeason = series?.seasons?.firstOrNull { it.seasonNumber == defaultSeasonNum }
+                        ?: defaultSeason?.let { Season(id = it.id, seasonNumber = it.seasonNumber, name = it.name) }
+                        ?: series?.seasons?.firstOrNull()
+                    val episodes = defaultSeason?.episodes ?: emptyList()
 
                     _uiState.value = DetailUiState(
                         isLoading = false,
                         series = series,
-                        selectedSeason = firstSeason,
+                        selectedSeason = initialSeason,
                         episodes = episodes
                     )
                 } else {
@@ -60,17 +66,36 @@ class DetailViewModel(
     }
 
     fun selectSeason(seriesSlug: String, season: Season) {
+        if (_uiState.value.selectedSeason?.id == season.id && _uiState.value.episodes.isNotEmpty() && !_uiState.value.isLoadingEpisodes) {
+            return
+        }
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(selectedSeason = season)
+            val series = _uiState.value.series
+            val defaultSeason = series?.defaultSeason
+            // If selecting the default season and its episodes are already cached, use them directly
+            if (defaultSeason != null && defaultSeason.seasonNumber == season.seasonNumber && defaultSeason.episodes.isNotEmpty()) {
+                _uiState.value = _uiState.value.copy(
+                    selectedSeason = season,
+                    episodes = defaultSeason.episodes,
+                    isLoadingEpisodes = false
+                )
+                return@launch
+            }
+
+            _uiState.value = _uiState.value.copy(
+                selectedSeason = season,
+                isLoadingEpisodes = true
+            )
             try {
                 // Fetch specific season episodes via episode 1 detail
                 val epRes = repository.getEpisodeDetail(seriesSlug, season.seasonNumber, 1)
                 val newEpisodes = epRes?.season?.episodes ?: emptyList()
-                if (newEpisodes.isNotEmpty()) {
-                    _uiState.value = _uiState.value.copy(episodes = newEpisodes)
-                }
+                _uiState.value = _uiState.value.copy(
+                    isLoadingEpisodes = false,
+                    episodes = if (newEpisodes.isNotEmpty()) newEpisodes else _uiState.value.episodes
+                )
             } catch (e: Exception) {
-                // Keep existing episodes if failure
+                _uiState.value = _uiState.value.copy(isLoadingEpisodes = false)
             }
         }
     }

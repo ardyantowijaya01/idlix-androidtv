@@ -279,7 +279,8 @@ fun DetailScreen(
                                 horizontalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
                                 items(uiState.series?.seasons ?: emptyList()) { season ->
-                                    val isSelected = season.id == uiState.selectedSeason?.id
+                                    val isSelected = season.id == uiState.selectedSeason?.id ||
+                                            season.seasonNumber == uiState.selectedSeason?.seasonNumber
                                     Button(
                                         onClick = { viewModel.selectSeason(slug, season) },
                                         colors = ButtonDefaults.colors(
@@ -296,25 +297,36 @@ fun DetailScreen(
                             Spacer(modifier = Modifier.height(16.dp))
 
                             // Episodes List
-                            TvLazyRow(
-                                horizontalArrangement = Arrangement.spacedBy(14.dp)
-                            ) {
-                                items(uiState.episodes, key = { it.id }) { ep ->
-                                    TvEpisodeCard(
-                                        episode = ep,
-                                        onClick = {
-                                            onNavigateToPlayer(
-                                                "episode",
-                                                ep.id,
-                                                "${uiState.series?.title} - ${ep.name}",
-                                                ep.fullStillUrl,
-                                                uiState.series?.fullBackdropUrl,
-                                                uiState.series?.slug,
-                                                uiState.selectedSeason?.seasonNumber ?: 1,
-                                                ep.episodeNumber
-                                            )
-                                        }
-                                    )
+                            if (uiState.isLoadingEpisodes) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(180.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    TvLoadingSpinner()
+                                }
+                            } else {
+                                TvLazyRow(
+                                    horizontalArrangement = Arrangement.spacedBy(14.dp)
+                                ) {
+                                    items(uiState.episodes, key = { it.id }) { ep ->
+                                        TvEpisodeCard(
+                                            episode = ep,
+                                            onClick = {
+                                                onNavigateToPlayer(
+                                                    "episode",
+                                                    ep.id,
+                                                    "${uiState.series?.title} - ${ep.name}",
+                                                    ep.fullStillUrl,
+                                                    uiState.series?.fullBackdropUrl,
+                                                    uiState.series?.slug,
+                                                    uiState.selectedSeason?.seasonNumber ?: 1,
+                                                    ep.episodeNumber
+                                                )
+                                            }
+                                        )
+                                    }
                                 }
                             }
                         }
