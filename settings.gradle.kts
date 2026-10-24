@@ -21,4 +21,6 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "IdlixTV"
-include(":app")
+include(":core:data")
+include(":app-tv")
+include(":app-mobile")
